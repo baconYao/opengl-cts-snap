@@ -1,0 +1,14 @@
+#!/bin/bash
+
+echo "Available mustpass caselist files:"
+echo ""
+find "${SNAP}/usr/share/opengl-cts" -name "*.txt" 2>/dev/null \
+    | grep -v "/src/" \
+    | sort \
+    | while read -r file; do
+    echo "  ${file#${SNAP}/usr/share/opengl-cts/}"
+done
+echo ""
+echo "Usage examples:"
+echo "  opengl-cts.test --caselist=data/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-main.txt"
+echo "  opengl-cts.test --deqp-case=KHR-GL46.info.vendor"

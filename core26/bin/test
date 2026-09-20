@@ -1,0 +1,114 @@
+#!/bin/bash
+
+NO_CONFINEMENT=0
+VENDOR=""
+ARGS=()
+
+for arg in "$@"; do
+    if [ "$arg" = "--headless" ]; then
+        # Kept for backwards compatibility; headless is now always-on.
+        :
+    elif [ "$arg" = "--no-confinement" ]; then
+        NO_CONFINEMENT=1
+    elif [[ "$arg" == --vendor=* ]]; then
+        VENDOR="${arg#--vendor=}"
+    else
+        ARGS+=("$arg")
+    fi
+done
+
+if [ ${#ARGS[@]} -eq 0 ]; then
+    echo "Usage: opengl-cts.test [--no-confinement] [--vendor=intel|amd|nvidia] <test-spec>"
+    echo ""
+    echo "  Tests always run headless, using EGL surfaceless + FBO rendering"
+    echo "  (hardware-accelerated; requires the gpu-2604 content interface),"
+    echo "  since glcts is built for the surfaceless target only."
+    echo ""
+    echo "  --no-confinement    Run with host EGL/Mesa stack instead of gpu-2604 content pack."
+    echo "                      Requires libegl-dev on the host."
+    echo "  --vendor=<name>     Set MESA_LOADER_DRIVER_OVERRIDE to prefer a specific GPU vendor."
+    echo "                      On multi-GPU systems Mesa may otherwise pick a low-capability"
+    echo "                      device.  Note: selects by driver, not by specific device node."
+    echo "                        intel  -> iris"
+    echo "                        amd    -> radeonsi"
+    echo "                        nvidia -> nouveau (open-source; max OpenGL 4.3)"
+    echo ""
+    echo "Examples:"
+    echo "  opengl-cts.test --deqp-case=KHR-GL46.info.vendor"
+    echo "  opengl-cts.test --caselist=data/gl_cts/data/mustpass/gl/khronos_mustpass/4.6.1.x/gl46-main.txt"
+    echo "  opengl-cts.test --vendor=intel KHR-GL46.info.vendor"
+    echo "  opengl-cts.test --no-confinement --deqp-case=KHR-GLES32.info.*"
+    exit 1
+fi
+
+GPU_WRAPPER="${SNAP}/gpu-2604/bin/gpu-2604-provider-wrapper"
+
+# glcts is built with -DDEQP_TARGET=surfaceless, so it always dlopen's EGL.
+if [ "$NO_CONFINEMENT" = "1" ]; then
+    # SNAP_ARCH is not set outside the snap launcher; derive from uname.
+    case "$(uname -m)" in
+        x86_64)  ARCH_TRIPLE=x86_64-linux-gnu ;;
+        aarch64) ARCH_TRIPLE=aarch64-linux-gnu ;;
+        *)       ARCH_TRIPLE="$(uname -m)-linux-gnu" ;;
+    esac
+    export LD_LIBRARY_PATH="/usr/lib/${ARCH_TRIPLE}:/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+else
+    # glcts dlopen's the unversioned 'libEGL.so', but gpu-2604 only ships
+    # 'libEGL.so.1'. Symlink it so the loader can find it.
+    case "${SNAP_ARCH}" in
+        amd64) ARCH_TRIPLE=x86_64-linux-gnu ;;
+        arm64) ARCH_TRIPLE=aarch64-linux-gnu ;;
+        *)     ARCH_TRIPLE="${SNAP_ARCH}-linux-gnu" ;;
+    esac
+    _EGL_TMPDIR=$(mktemp -d)
+    ln -sf "${SNAP}/gpu-2604/usr/lib/${ARCH_TRIPLE}/libEGL.so.1" "${_EGL_TMPDIR}/libEGL.so"
+    export LD_LIBRARY_PATH="${_EGL_TMPDIR}:${SNAP}/usr/lib/${ARCH_TRIPLE}:${LD_LIBRARY_PATH:-}"
+    trap "rm -rf ${_EGL_TMPDIR}" EXIT
+fi
+
+export EGL_PLATFORM=surfaceless
+export DISPLAY=
+export WAYLAND_DISPLAY=
+SURFACE_ARGS=(--deqp-surface-type=fbo)
+
+# On multi-GPU systems Mesa may pick a low-capability device by default.
+case "$VENDOR" in
+    intel)  export MESA_LOADER_DRIVER_OVERRIDE=iris ;;
+    amd)    export MESA_LOADER_DRIVER_OVERRIDE=radeonsi ;;
+    nvidia) export MESA_LOADER_DRIVER_OVERRIDE=nouveau ;;
+    "")     ;;
+    *)      echo "Error: unknown --vendor '${VENDOR}' (use intel, amd, or nvidia)" >&2; exit 1 ;;
+esac
+
+# Create a working directory for test results
+WORK_DIR="${HOME}/.opengl-cts"
+mkdir -p "${WORK_DIR}"
+
+# glcts resolves data paths relative to CWD, so run from the data root.
+cd "${SNAP}/usr/share/opengl-cts"
+
+set -- "${ARGS[@]}"
+
+GPU_CMD=()
+if [ "$NO_CONFINEMENT" = "0" ] && [ -x "${GPU_WRAPPER}" ]; then
+    GPU_CMD=("${GPU_WRAPPER}")
+fi
+
+if [[ "$1" == --caselist=* ]]; then
+    CASELIST_PATH="${1#--caselist=}"
+    CASELIST_FULL="${SNAP}/usr/share/opengl-cts/${CASELIST_PATH}"
+    "${GPU_CMD[@]}" "${SNAP}/usr/bin/glcts" \
+        "${SURFACE_ARGS[@]}" \
+        --deqp-caselist-file="${CASELIST_FULL}" \
+        --deqp-log-filename="${WORK_DIR}/$(basename "${CASELIST_PATH}" .txt).qpa"
+elif [[ "$1" == --deqp-case=* ]]; then
+    "${GPU_CMD[@]}" "${SNAP}/usr/bin/glcts" \
+        "${SURFACE_ARGS[@]}" \
+        "$1" \
+        --deqp-log-filename="${WORK_DIR}/TestResults.qpa"
+else
+    "${GPU_CMD[@]}" "${SNAP}/usr/bin/glcts" \
+        "${SURFACE_ARGS[@]}" \
+        --deqp-case="$1" \
+        --deqp-log-filename="${WORK_DIR}/TestResults.qpa"
+fi
