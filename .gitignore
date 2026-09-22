@@ -1,0 +1,10 @@
+*.snap
+
+# Contains internal machine names/IPs/credentials - never commit
+machines.json
+
+# snapcraft build artifacts
+parts/
+stage/
+prime/
+*.snap.build.log

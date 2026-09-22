@@ -60,6 +60,45 @@ parts:
 
   eglinfo-bin:
     plugin: nil
+    override-pull: |
+      set -eux
+      if [ "$CRAFT_ARCH_BUILD_FOR" == "arm64" ] && [ "$CRAFT_ARCH_BUILD_ON" == "amd64" ]; then
+          # Multiarch setup must happen at PULL time, before craftctl default
+          # fetches stage-packages, or stage-packages get resolved from the
+          # amd64 build host's native arch and end up staged as amd64 .debs
+          # (usr/lib/x86_64-linux-gnu/*) even though build-for is arm64.
+          dpkg --add-architecture arm64
+          if [ -f /etc/apt/sources.list ]; then
+            sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          fi
+          for f in /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *arm64.list) continue ;;
+            esac
+            if ! grep -q "ubuntu-ports" "$f"; then
+              sed -i 's/^deb /deb [arch=amd64] /' "$f"
+            fi
+          done
+          for f in /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            if ! grep -q "ubuntu-ports" "$f"; then
+              if grep -q "^Architectures:" "$f"; then
+                sed -i 's/^Architectures:.*/Architectures: amd64/' "$f"
+              else
+                sed -i '/^URIs:/a Architectures: amd64' "$f"
+              fi
+            fi
+          done
+          printf '%s\n' \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
+            > /etc/apt/sources.list.d/arm64.list
+          apt-get update
+      fi
+      craftctl default
     stage-packages:
       - mesa-utils
       - mesa-utils-bin
@@ -73,6 +112,45 @@ parts:
 
   gl-runtime-libs:
     plugin: nil
+    override-pull: |
+      set -eux
+      if [ "$CRAFT_ARCH_BUILD_FOR" == "arm64" ] && [ "$CRAFT_ARCH_BUILD_ON" == "amd64" ]; then
+          # Multiarch setup must happen at PULL time, before craftctl default
+          # fetches stage-packages, or stage-packages get resolved from the
+          # amd64 build host's native arch and end up staged as amd64 .debs
+          # (usr/lib/x86_64-linux-gnu/*) even though build-for is arm64.
+          dpkg --add-architecture arm64
+          if [ -f /etc/apt/sources.list ]; then
+            sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          fi
+          for f in /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *arm64.list) continue ;;
+            esac
+            if ! grep -q "ubuntu-ports" "$f"; then
+              sed -i 's/^deb /deb [arch=amd64] /' "$f"
+            fi
+          done
+          for f in /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            if ! grep -q "ubuntu-ports" "$f"; then
+              if grep -q "^Architectures:" "$f"; then
+                sed -i 's/^Architectures:.*/Architectures: amd64/' "$f"
+              else
+                sed -i '/^URIs:/a Architectures: amd64' "$f"
+              fi
+            fi
+          done
+          printf '%s\n' \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
+            > /etc/apt/sources.list.d/arm64.list
+          apt-get update
+      fi
+      craftctl default
     stage-packages:
       # jammy predates the 64-bit time_t transition, so these are named
       # without the "t64" suffix used on later releases.
@@ -98,8 +176,6 @@ parts:
     source: https://github.com/KhronosGroup/VK-GL-CTS.git
     source-tag: opengl-cts-$SNAPCRAFT_PROJECT_VERSION
     source-type: git
-    build-attributes:
-      - enable-patchelf
     build-packages:
       - build-essential
       - cmake

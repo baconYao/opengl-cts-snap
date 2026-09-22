@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
+#!/bin/sh
 
-"""
-Minimal configure hook for strict confinement.
-Avoids external snap dependencies and /etc writes.
-"""
-print("opengl-cts: configure hook completed (strict confinement).")
+# Minimal configure hook for strict confinement.
+# Avoids external snap dependencies and /etc writes.
+# core26 lacks python3, so this must be a POSIX shell script.
+echo "opengl-cts: configure hook completed (strict confinement)."
