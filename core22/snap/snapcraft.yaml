@@ -1,4 +1,4 @@
-name: opengl-cts
+name: baconyao-opengl-cts-22
 base: core22
 confinement: strict
 lint:
