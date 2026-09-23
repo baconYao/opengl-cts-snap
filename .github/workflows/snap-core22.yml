@@ -73,4 +73,4 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS_CORE22 }}
         with:
           snap: ${{ steps.build.outputs.snap }}
-          release: core22/edge
+          release: edge
